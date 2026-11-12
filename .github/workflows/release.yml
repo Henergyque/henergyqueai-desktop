@@ -9,7 +9,21 @@ permissions:
   contents: write
 
 jobs:
+  # La publication est créée une seule fois, avant les deux fabrications :
+  # sans cela, Windows et Mac en créaient chacun une.
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Publication de la version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="v$(node -p "require('./package.json').version")"
+          gh release view "$version" >/dev/null 2>&1 || gh release create "$version" --title "${version#v}" --notes "HenergyqueAI ${version#v} pour Windows et macOS."
+
   build:
+    needs: release
     strategy:
       fail-fast: false
       matrix:
