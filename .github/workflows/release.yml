@@ -29,7 +29,7 @@ jobs:
       # Le Mac de GitHub est un Apple Silicon : on ajoute les binaires Intel de
       # sharp pour la version Mac Intel.
       - if: runner.os == 'macOS'
-        run: npm install --no-save --os=darwin --cpu=x64 @img/sharp-darwin-x64 @img/sharp-libvips-darwin-x64
+        run: npm install --no-save --force @img/sharp-darwin-x64 @img/sharp-libvips-darwin-x64
       - run: npm test
       - name: Modèle de transcription
         uses: actions/cache@v4
