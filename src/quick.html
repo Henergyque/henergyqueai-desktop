@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'self'" />
+    <title>Question rapide</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --paper: #fbf5e9;
+        --ink: #2b2620;
+        --muted: #7a8470;
+        --line: #2b2620;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --paper: #1f2420;
+          --ink: #ecebe3;
+          --muted: #9aa392;
+          --line: #59624f;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        background: var(--paper);
+        color: var(--ink);
+        font: 17px/1.4 Georgia, "Times New Roman", serif;
+      }
+      form {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        height: 100%;
+        padding: 0 16px 0 20px;
+        border: 3px solid var(--line);
+        -webkit-app-region: drag;
+      }
+      input {
+        flex: 1;
+        min-width: 0;
+        border: 0;
+        outline: 0;
+        background: none;
+        color: inherit;
+        font: inherit;
+        -webkit-app-region: no-drag;
+      }
+      input::placeholder {
+        color: var(--muted);
+      }
+      kbd {
+        color: var(--muted);
+        font: 12px/1 ui-monospace, Consolas, monospace;
+        white-space: nowrap;
+      }
+    </style>
+  </head>
+  <body>
+    <form id="form">
+      <input id="prompt" aria-label="Question pour HenergyqueAI" placeholder="Posez une question à HenergyqueAI…" maxlength="12000" autocomplete="off" />
+      <kbd>Entrée pour envoyer · Échap pour fermer</kbd>
+    </form>
+    <script src="quick.js"></script>
+  </body>
+</html>

@@ -1,0 +1,114 @@
+appId: fr.henergyqueai.desktop
+productName: HenergyqueAI
+copyright: Copyright © 2026 HenergyqueAI
+
+# L'interface est en français ; Electron n'a besoin que de ces traductions.
+electronLanguages: [fr, en-US]
+
+directories:
+  output: dist
+  buildResources: build
+
+# Les listes propres à chaque système remplacent celle-ci au lieu de la
+# compléter : chacune la reprend donc en entier.
+files:
+  - package.json
+  - src/**
+  - ui/**
+  - build/icon.png
+  - build/tray.png
+  - build/tray@2x.png
+  # Inutiles à l'exécution : la version web d'onnxruntime est déjà incluse
+  # dans la bibliothèque, et les binaires Linux ne servent jamais.
+  - "!node_modules/onnxruntime-web/**"
+  - "!node_modules/onnxruntime-node/bin/napi-v*/linux/**"
+  - "!**/*.{md,map,ts,d.ts}"
+
+# Le modèle de transcription, embarqué à côté de l'application.
+extraResources:
+  - from: models
+    to: models
+
+# Les modules natifs (onnxruntime-node, sharp) sont livrés précompilés pour
+# chaque système : rien à recompiler, ce qui permet aussi de fabriquer la
+# version Mac Intel sur un Mac Apple Silicon.
+npmRebuild: false
+
+# Les bibliothèques natives ne peuvent pas être chargées depuis l'archive asar.
+asarUnpack:
+  - "**/*.node"
+  - "**/onnxruntime-node/bin/**"
+  - "**/@img/**"
+  - "**/sharp/**"
+
+publish:
+  provider: github
+  owner: Henergyque
+  repo: henergyqueai-desktop
+  releaseType: release
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  artifactName: HenergyqueAI-Setup.${ext}
+  files:
+    - package.json
+    - src/**
+    - ui/**
+    - build/icon.png
+    - build/tray.png
+    - build/tray@2x.png
+    - "!node_modules/onnxruntime-web/**"
+    - "!node_modules/onnxruntime-node/bin/napi-v*/linux/**"
+    - "!node_modules/onnxruntime-node/bin/napi-v*/darwin/**"
+    - "!node_modules/onnxruntime-node/bin/napi-v*/win32/arm64/**"
+    # Accélération graphique inutile : la transcription tourne sur le processeur.
+    - "!node_modules/onnxruntime-node/bin/napi-v*/win32/x64/{DirectML,dxcompiler,dxil}.dll"
+    - "!**/*.{md,map,ts,d.ts}"
+
+nsis:
+  oneClick: true
+  perMachine: false
+  shortcutName: HenergyqueAI
+  uninstallDisplayName: HenergyqueAI
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  runAfterFinish: true
+  deleteAppDataOnUninstall: false
+
+mac:
+  category: public.app-category.productivity
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+  artifactName: HenergyqueAI-mac-${arch}.${ext}
+  # Signature ad hoc : sans compte Apple Developer, elle suffit pour qu'un Mac
+  # Apple Silicon accepte de lancer l'application.
+  identity: "-"
+  hardenedRuntime: false
+  gatekeeperAssess: false
+  darkModeSupport: true
+  extendInfo:
+    NSMicrophoneUsageDescription: HenergyqueAI utilise le micro pour la dictée. La transcription se fait sur votre Mac.
+  files:
+    - package.json
+    - src/**
+    - ui/**
+    - build/icon.png
+    - build/tray.png
+    - build/tray@2x.png
+    - "!node_modules/onnxruntime-web/**"
+    - "!node_modules/onnxruntime-node/bin/napi-v*/linux/**"
+    - "!node_modules/onnxruntime-node/bin/napi-v*/win32/**"
+    - "!**/*.{md,map,ts,d.ts}"
+
+dmg:
+  title: HenergyqueAI
+  contents:
+    - x: 140
+      y: 190
+    - x: 400
+      y: 190
+      type: link
+      path: /Applications

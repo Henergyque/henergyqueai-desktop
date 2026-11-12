@@ -1,0 +1,27 @@
+{
+  "name": "henergyqueai-desktop",
+  "productName": "HenergyqueAI",
+  "version": "1.0.0",
+  "description": "L'application de bureau HenergyqueAI pour Windows et macOS.",
+  "author": "HenergyqueAI",
+  "license": "MIT",
+  "private": true,
+  "type": "commonjs",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "fetch-model": "node scripts/fetch-model.mjs",
+    "test": "node --test test/*.test.js",
+    "test:app": "node test/app.mjs",
+    "dist:win": "electron-builder --win nsis --publish never",
+    "dist:mac": "electron-builder --mac dmg --arm64 --x64 --publish never"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^4.3.2",
+    "electron-updater": "^6.8.11"
+  },
+  "devDependencies": {
+    "electron": "^45.3.1",
+    "electron-builder": "^26.18.0"
+  }
+}

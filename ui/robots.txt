@@ -1,0 +1,37 @@
+User-agent: *
+Disallow: /api/
+Disallow: /app
+Disallow: /parametres
+Disallow: /paiement
+Disallow: /reinitialiser
+Disallow: /rejoindre
+
+# Les assistants IA sont les bienvenus sur les pages publiques.
+User-agent: GPTBot
+Allow: /
+Disallow: /api/
+Disallow: /app
+Disallow: /parametres
+Disallow: /paiement
+Disallow: /reinitialiser
+Disallow: /rejoindre
+
+User-agent: ClaudeBot
+Allow: /
+Disallow: /api/
+Disallow: /app
+Disallow: /parametres
+Disallow: /paiement
+Disallow: /reinitialiser
+Disallow: /rejoindre
+
+User-agent: PerplexityBot
+Allow: /
+Disallow: /api/
+Disallow: /app
+Disallow: /parametres
+Disallow: /paiement
+Disallow: /reinitialiser
+Disallow: /rejoindre
+
+Sitemap: https://henergyqueai.fr/sitemap.xml
