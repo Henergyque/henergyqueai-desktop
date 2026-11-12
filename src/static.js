@@ -40,21 +40,24 @@ function resolveStatic(root, pathname, entry = "desktop.html") {
   return file;
 }
 
-function createStaticHandler(root, entry) {
+// `hot(file)` renvoie le fichier d'une interface téléchargée (voir
+// ui-updates.js), ou null pour servir celle livrée avec l'application.
+function createStaticHandler(root, entry = "desktop.html", hot = () => null) {
   const base = path.resolve(root);
   return async function serve(request) {
     const { pathname } = new URL(request.url);
     const file = resolveStatic(base, pathname, entry);
     if (!file) return new Response("Introuvable", { status: 404 });
-    try {
-      const body = await fs.promises.readFile(file);
-      const type = TYPES[path.extname(file).toLowerCase()] || "application/octet-stream";
-      return new Response(body, {
-        headers: { "Content-Type": type, "Cache-Control": "no-cache" },
-      });
-    } catch {
-      return new Response("Introuvable", { status: 404 });
+    const relative = path.relative(base, file).split(path.sep).join("/");
+    const type = TYPES[path.extname(file).toLowerCase()] || "application/octet-stream";
+    for (const candidate of [hot(relative), file]) {
+      if (!candidate) continue;
+      try {
+        const body = await fs.promises.readFile(candidate);
+        return new Response(body, { headers: { "Content-Type": type, "Cache-Control": "no-cache" } });
+      } catch {}
     }
+    return new Response("Introuvable", { status: 404 });
   };
 }
 

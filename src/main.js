@@ -9,7 +9,6 @@ const {
   Menu,
   Notification,
   Tray,
-  dialog,
   globalShortcut,
   ipcMain,
   nativeImage,
@@ -24,6 +23,7 @@ const path = require("node:path");
 const fs = require("node:fs");
 const { createApiRelay } = require("./proxy");
 const { createStaticHandler } = require("./static");
+const { createUiUpdates } = require("./ui-updates");
 
 const SCHEME = "app";
 const APP_ORIGIN = `${SCHEME}://henergyqueai`;
@@ -40,6 +40,37 @@ const MODELS_DIR = app.isPackaged
   ? path.join(process.resourcesPath, "models")
   : path.join(__dirname, "..", "models");
 const ICON = path.join(__dirname, "..", "build", "icon.png");
+
+function bundledUiVersion() {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(UI_DIR, "ui-version.json"), "utf8")).version || 0;
+  } catch {
+    return 0;
+  }
+}
+let uiUpdates = null;
+
+// Les empreintes des fichiers de l'interface livrée, calculées une fois.
+let bundledHashes = null;
+function bundledUiFiles() {
+  if (bundledHashes) return bundledHashes;
+  const { sha256 } = require("./ui-updates");
+  bundledHashes = {};
+  const walk = (dir) => {
+    for (const name of fs.readdirSync(dir)) {
+      const full = path.join(dir, name);
+      if (fs.statSync(full).isDirectory()) walk(full);
+      else {
+        const relative = path.relative(UI_DIR, full).split(path.sep).join("/");
+        if (relative !== "ui-version.json") bundledHashes[relative] = sha256(fs.readFileSync(full));
+      }
+    }
+  };
+  try {
+    walk(UI_DIR);
+  } catch {}
+  return bundledHashes;
+}
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -103,7 +134,19 @@ function savedBounds() {
 
 async function start() {
   const relay = createApiRelay({ apiOrigin: API_ORIGIN, fetch: (url, init) => net.fetch(url, init) });
-  const serve = createStaticHandler(UI_DIR);
+  // L'interface se met à jour depuis le site, sans réinstaller l'application.
+  uiUpdates = createUiUpdates({
+    dir: path.join(app.getPath("userData"), "interface"),
+    bundledVersion: bundledUiVersion(),
+    shellVersion: app.getVersion(),
+    origin: API_ORIGIN,
+    fetch: (url, init) => net.fetch(url, init),
+    bundledFiles: bundledUiFiles,
+    // Les tests signent avec leur propre clé ; jamais dans l'application installée.
+    ...(!app.isPackaged && process.env.HENERGYQUE_UI_PUBLIC_KEY ? { publicKey: process.env.HENERGYQUE_UI_PUBLIC_KEY } : {}),
+  });
+  uiUpdates.load();
+  const serve = createStaticHandler(UI_DIR, "desktop.html", (file) => uiUpdates.resolve(file));
   protocol.handle(SCHEME, (request) => {
     const { pathname } = new URL(request.url);
     return pathname === "/api" || pathname.startsWith("/api/") ? relay(request) : serve(request);
@@ -117,6 +160,7 @@ async function start() {
   createTray();
   globalShortcut.register(QUICK_SHORTCUT, toggleQuick);
   checkForUpdates();
+  scheduleUiUpdates();
 
   app.on("activate", () => showMain());
 }
@@ -244,6 +288,45 @@ function createMainWindow() {
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
+  guardHotUi(mainWindow);
+}
+
+// Une interface téléchargée qui ne s'affiche pas est écartée, et la fenêtre
+// recharge celle livrée avec l'application.
+function guardHotUi(win) {
+  const fallBack = (reason) => {
+    if (!uiUpdates?.hot || win.isDestroyed()) return;
+    console.error(`Interface ${uiUpdates.version} écartée : ${reason}`);
+    uiUpdates.reject();
+    win.loadURL(`${APP_ORIGIN}/app`);
+  };
+  win.webContents.on("render-process-gone", (event, details) => fallBack(details.reason));
+  win.webContents.on("did-fail-load", (event, code, description, url, isMainFrame) => {
+    if (isMainFrame && code !== -3) fallBack(description);
+  });
+  win.webContents.on("did-finish-load", () => {
+    if (!uiUpdates?.hot) return;
+    setTimeout(async () => {
+      if (win.isDestroyed()) return;
+      const mounted = await win.webContents
+        .executeJavaScript("!!document.getElementById('root')?.childElementCount")
+        .catch(() => false);
+      if (!mounted) fallBack("interface vide");
+    }, 8000);
+  });
+}
+
+function scheduleUiUpdates() {
+  if (process.env.HENERGYQUE_NO_UPDATES && !process.env.HENERGYQUE_UI_CHECK_DELAY) return;
+  const run = () =>
+    uiUpdates
+      .check()
+      .then((version) => {
+        if (version && !updateState) announceUpdate({ kind: "restart", version: String(version) });
+      })
+      .catch((error) => console.error(`Mise à jour de l'interface : ${error.message}`));
+  setTimeout(run, Number(process.env.HENERGYQUE_UI_CHECK_DELAY ?? 15000));
+  setInterval(run, 6 * 60 * 60 * 1000).unref?.();
 }
 
 function showMain() {
@@ -442,6 +525,13 @@ function registerIpc() {
     return true;
   });
 
+  ipcMain.handle("desktop:update-state", (event) => (trusted(event) ? updateState : null));
+  ipcMain.on("desktop:update-apply", (event) => {
+    if (!trusted(event) || !updateState) return;
+    if (updateState.kind === "download") openExternal(`${API_ORIGIN}/telecharger`);
+    else restartToUpdate();
+  });
+
   ipcMain.on("desktop:theme", (event, theme) => {
     if (trusted(event)) applyTheme(theme === "dark" ? "dark" : "light");
   });
@@ -510,27 +600,38 @@ function newer(latest, current) {
   return false;
 }
 
+// L'état des mises à jour, affiché dans l'interface comme un encart discret
+// (« Mise à jour prête · Redémarrer »), plutôt qu'une fenêtre qui interrompt.
+//   restart  : une nouvelle version est prête, un redémarrage l'applique
+//   download : une nouvelle version complète est à télécharger (Mac)
+let updateState = null;
+let installOnRestart = false;
+
+function announceUpdate(state) {
+  updateState = state;
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("desktop:update", state);
+}
+
+function restartToUpdate() {
+  quitting = true;
+  if (installOnRestart) {
+    require("electron-updater").autoUpdater.quitAndInstall();
+    return;
+  }
+  app.relaunch();
+  app.exit(0);
+}
+
 async function checkForUpdates() {
   if (!app.isPackaged || process.env.HENERGYQUE_NO_UPDATES) return;
-  // Windows se met à jour tout seul ; sur Mac, sans signature Apple, on
-  // propose simplement le téléchargement de la nouvelle version.
+  // Windows télécharge la nouvelle version tout seul ; sur Mac, sans
+  // signature Apple, on propose de la télécharger.
   if (process.platform === "win32") {
     try {
       const { autoUpdater } = require("electron-updater");
-      autoUpdater.on("update-downloaded", async () => {
-        const { response } = await dialog.showMessageBox({
-          type: "info",
-          buttons: ["Redémarrer", "Plus tard"],
-          defaultId: 0,
-          cancelId: 1,
-          title: "Mise à jour prête",
-          message: "Une nouvelle version de HenergyqueAI est prête.",
-          detail: "Elle sera installée au prochain redémarrage de l'application.",
-        });
-        if (response === 0) {
-          quitting = true;
-          autoUpdater.quitAndInstall();
-        }
+      autoUpdater.on("update-downloaded", ({ version }) => {
+        installOnRestart = true;
+        announceUpdate({ kind: "restart", version });
       });
       await autoUpdater.checkForUpdates();
     } catch {}
@@ -542,18 +643,7 @@ async function checkForUpdates() {
     });
     if (!response.ok) return;
     const { tag_name: tag } = await response.json();
-    if (!newer(tag, app.getVersion()) || readSettings().skippedVersion === tag) return;
-    const { response: choice } = await dialog.showMessageBox({
-      type: "info",
-      buttons: ["Télécharger", "Plus tard", "Ignorer cette version"],
-      defaultId: 0,
-      cancelId: 1,
-      title: "Nouvelle version",
-      message: `HenergyqueAI ${tag.replace(/^v/, "")} est disponible.`,
-      detail: "Téléchargez-la puis remplacez l'application dans le dossier Applications.",
-    });
-    if (choice === 0) openExternal(`${API_ORIGIN}/telecharger`);
-    if (choice === 2) writeSettings({ skippedVersion: tag });
+    if (newer(tag, app.getVersion())) announceUpdate({ kind: "download", version: tag.replace(/^v/, "") });
   } catch {}
 }
 

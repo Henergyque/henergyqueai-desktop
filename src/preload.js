@@ -28,6 +28,15 @@ if (location.origin === "app://henergyqueai") {
     notify: (title, body) => ipcRenderer.invoke("desktop:notify", { title, body }),
     openExternal: (url) => ipcRenderer.invoke("desktop:open-external", url),
     setTheme: (theme) => ipcRenderer.send("desktop:theme", theme),
+    // Mise à jour prête (ou à télécharger) : l'interface affiche un encart.
+    onUpdate: (listener) => {
+      if (typeof listener !== "function") return () => {};
+      const relay = (event, state) => listener(state);
+      ipcRenderer.on("desktop:update", relay);
+      ipcRenderer.invoke("desktop:update-state").then((state) => state && listener(state));
+      return () => ipcRenderer.removeListener("desktop:update", relay);
+    },
+    applyUpdate: () => ipcRenderer.send("desktop:update-apply"),
     onQuickPrompt: subscribe("desktop:quick-prompt"),
     onNewChat: subscribe("desktop:new-chat"),
   });
